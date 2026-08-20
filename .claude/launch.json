@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "greenhouse-ui",
-      "runtimeExecutable": "/Users/aarushkikkuru/Documents/Github/GreenHouse/.venv/bin/python",
+      "runtimeExecutable": "${workspaceFolder}/.venv/bin/python",
       "runtimeArgs": [
         "-m",
         "streamlit",

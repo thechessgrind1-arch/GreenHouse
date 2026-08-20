@@ -44,17 +44,21 @@ TOMATO_INPUT_SIZE = (224, 224)
 
 # Class order must match training exactly — index i of the model's output vector
 # is this list's element i. Reordering these silently mislabels every prediction.
+# These names come straight from the training notebook's
+# `image_dataset_from_directory(...).class_names`, so the separator is the triple
+# underscore the folder layout uses, and the spider-mites class keeps its full
+# "Two-spotted_spider_mite" suffix.
 TOMATO_CLASS_NAMES = [
-    "Tomato__Bacterial_spot",
-    "Tomato__Early_blight",
-    "Tomato__Late_blight",
-    "Tomato__Leaf_Mold",
-    "Tomato__Septoria_leaf_spot",
-    "Tomato__Spider_mites",
-    "Tomato__Target_Spot",
-    "Tomato__Tomato_Yellow_Leaf_Curl_Virus",
-    "Tomato__Tomato_mosaic_virus",
-    "Tomato__healthy",
+    "Tomato___Bacterial_spot",
+    "Tomato___Early_blight",
+    "Tomato___Late_blight",
+    "Tomato___Leaf_Mold",
+    "Tomato___Septoria_leaf_spot",
+    "Tomato___Spider_mites Two-spotted_spider_mite",
+    "Tomato___Target_Spot",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+    "Tomato___Tomato_mosaic_virus",
+    "Tomato___healthy",
 ]
 
 # Strips the Streamlit toolbar/footer so this looks like a plain local app
@@ -90,13 +94,15 @@ def prettify(raw_name: str) -> str:
     """
     Turn a training folder label into something readable.
 
-    ``Tomato__Tomato_Yellow_Leaf_Curl_Virus`` -> ``Yellow leaf curl virus``.
+    ``Tomato___Tomato_Yellow_Leaf_Curl_Virus`` -> ``Yellow leaf curl virus``.
     The crop prefix is dropped because the sidebar already says which crop this
     is, and repeating it in every row just adds noise.
     """
-    name = raw_name.replace("Tomato__", "").replace("Tomato_", "")
+    name = raw_name.replace("Tomato___", "").replace("Tomato_", "")
     name = name.replace("_", " ").strip()
-    return name[:1].upper() + name[1:] if name else raw_name
+    # Title-case each word so "Leaf Mold" and "Target Spot" read consistently
+    # rather than only capitalising the first word.
+    return " ".join(w.capitalize() for w in name.split()) if name else raw_name
 
 
 # --------------------------------------------------------------------------- #
@@ -200,13 +206,19 @@ def predict_tomato_image(rgb: np.ndarray, model) -> dict:
     """
     Classify a tomato leaf into one of ten conditions.
 
-    Preprocessing mirrors the training notebook exactly — PIL resize to 224x224
-    and a raw float32 array with no rescaling, because the model carries its own
-    normalisation layer. Changing either would quietly shift every prediction.
+    Preprocessing mirrors the training notebook — resize to 224x224 and a raw
+    float32 array with no rescaling, because the model carries its own
+    normalisation layer. Bilinear resampling is used to match the kernel
+    `tf.keras.preprocessing.image_dataset_from_directory` applies; PIL's default
+    bicubic would skew every pixel slightly and shift predictions.
     """
     from PIL import Image
 
-    img = Image.fromarray(rgb).convert("RGB").resize(TOMATO_INPUT_SIZE)
+    img = (
+        Image.fromarray(rgb)
+        .convert("RGB")
+        .resize(TOMATO_INPUT_SIZE, resample=Image.BILINEAR)
+    )
     batch = np.expand_dims(np.array(img, dtype=np.float32), axis=0)
 
     probabilities = model.predict(batch, verbose=0)[0]

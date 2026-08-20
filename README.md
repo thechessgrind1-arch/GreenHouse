@@ -29,7 +29,7 @@ one glance answers "is something wrong?" and the next line answers "what?".
 A 10-class Keras CNN trained on a tomato-leaf dataset at 224×224, covering:
 
 `Bacterial_spot`, `Early_blight`, `Late_blight`, `Leaf_Mold`,
-`Septoria_leaf_spot`, `Spider_mites`, `Target_Spot`,
+`Septoria_leaf_spot`, `Spider_mites Two-spotted_spider_mite`, `Target_Spot`,
 `Tomato_Yellow_Leaf_Curl_Virus`, `Tomato_mosaic_virus`, `healthy`
 
 | File | Purpose |
@@ -174,7 +174,8 @@ condition slug isn't in the `LABELS.md` vocabulary (catches typos like
 python bell_pepper_pipeline.py --data-dir data
 ```
 
-Trains a `RandomForestClassifier` and an `SVC`, reports **5-fold cross-validated**
+Trains a `HistGradientBoostingClassifier`, a `RandomForestClassifier` and an
+`SVC`, reports **5-fold cross-validated**
 macro-F1 for each plus a hold-out `classification_report` and confusion matrix,
 saves confusion-matrix PNGs to `reports/`, runs the consistency check, refits the
 winner on all images, and writes it to `models/best_pepper_model.joblib`.
@@ -311,12 +312,15 @@ computed. The order matters and is enforced in one place (`preprocess()`) so
 training and inference cannot drift apart:
 
 1. **Resize** to 256×256.
-2. **Segment the leaf** — Otsu's threshold on the *saturation* channel. Studio
-   backdrops are near-neutral (low saturation) while leaf tissue — green,
-   chlorotic yellow or necrotic brown alike — is saturated, so this separates the
-   two without a hue window that would exclude diseased tissue. Morphological
-   close/open removes speckle, components smaller than 15% of the largest are
-   dropped, and interior holes are filled so lesion centres stay inside the mask.
+2. **Segment the leaf** — Otsu's threshold on the **Excess Green** vegetation
+   index (`2g − r − b` on chromatic coordinates), the standard plant-phenotyping
+   cue. It responds to *how green* a pixel is rather than how bright, so it
+   separates foliage from a studio backdrop or a pot without a hue window that
+   would exclude diseased tissue. When a leaf is fully necrotic (no green left)
+   Excess Green finds almost nothing, so saturation-Otsu is used as a fallback.
+   Morphological close/open removes speckle, components smaller than 15% of the
+   largest are dropped, and interior holes are filled so lesion centres stay
+   inside the mask.
 3. **White balance** using the *background* as the neutral reference. Plain
    grey-world assumes the whole frame averages to grey, which a leaf-filled frame
    violates — it bleeds the leaf's own greenness into the correction. The
@@ -370,9 +374,9 @@ refuses the mismatch instead, turning a silent accuracy collapse into a clear
   survives lighting, colour and compression changes. Neither fact makes this a
   field benchmark: every training image is a single detached leaf, centred and
   in focus. Real greenhouse photos add soil, overlapping leaves, occlusion and
-  motion blur, and the saturation-Otsu mask in particular assumes a
-  low-saturation backdrop — on soil or foliage it will degrade. Expect a real
-  drop, just not the *background-shortcut* portion of it.
+  motion blur, and the Excess Green mask assumes there is green leaf tissue to
+   find — on soil or heavily necrotic foliage it will degrade. Expect a real
+   drop, just not the *background-shortcut* portion of it.
 - **Consistency is not correctness.** A model that answers "healthy" every time
   would score 100% stable. Read the stability figure alongside macro-F1, never
   instead of it.
