@@ -1,6 +1,6 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -9,6 +9,18 @@ import crypto from "node:crypto";
 const PORT = 3001;
 const PYTHON = process.env.PYTHON || "python3";
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "..");
+const DIST_ROOT = path.join(PROJECT_ROOT, "dist");
+
+const CONTENT_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
 
 const TOMATO_CLASS_NAMES = [
   "Tomato___Bacterial_spot",
@@ -172,15 +184,51 @@ print("___RESULT___" + json.dumps(result))
   return JSON.parse(out.slice(marker + 13).trim());
 }
 
+async function serveFrontend(req, res) {
+  const requestPath = new URL(req.url || "/", "http://localhost").pathname;
+  const relativePath = requestPath === "/" ? "index.html" : requestPath.slice(1);
+  const filePath = path.resolve(DIST_ROOT, relativePath);
+
+  if (!filePath.startsWith(`${DIST_ROOT}${path.sep}`)) {
+    return false;
+  }
+
+  try {
+    const content = await readFile(filePath);
+    const extension = path.extname(filePath).toLowerCase();
+    res.writeHead(200, {
+      "Content-Type": CONTENT_TYPES[extension] || "application/octet-stream",
+    });
+    res.end(content);
+    return true;
+  } catch {
+    if (requestPath !== "/" && !requestPath.includes(".")) {
+      try {
+        const index = await readFile(path.join(DIST_ROOT, "index.html"));
+        res.writeHead(200, { "Content-Type": CONTENT_TYPES[".html"] });
+        res.end(index);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
     return;
+  }
+
+  if (req.method === "GET" && !req.url?.startsWith("/api/")) {
+    if (await serveFrontend(req, res)) return;
   }
 
   if (req.method === "POST" && req.url === "/api/predict") {
